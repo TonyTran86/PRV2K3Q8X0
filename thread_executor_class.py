@@ -1,18 +1,18 @@
-import pandas as pd
+from logger import get_logger
+from logger_class import Logger
 
+import pandas as pd
 from warnings import simplefilter
 from pathlib import Path
 from math import ceil
 from datetime import datetime
-from time import time
+from time import time, perf_counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
-from logger_class import Logger
 
 logger = Logger().get_logger('ThreadExecutor_class')
 logger.info('Logger from thread_executor_class.py')
-
 root_dir = Path().resolve()
 simplefilter("ignore")
 
@@ -51,16 +51,18 @@ class ThreadExecutor(object):
         try:
             t1 = time()
             with ThreadPool(processors) as executor:
+
                 for result in executor.map(func, iterable, chunksize=task_chunk):
                     df = pd.DataFrame([result], columns=result.keys())
                     output = pd.concat([output, df], ignore_index=True)
                 ThreadExecutor.print_out(f'Process finished in: {time() - t1}')
                 return output
+
         except Exception as err:
             ThreadExecutor.print_out(f'multithreading_ThreadPool error: {err.__class__.__name__} {err}', mode='error')
 
     @staticmethod
-    def cf_ThreadPoolExecutor_map(func, iterable):
+    def cf_ThreadPoolExecutor_map_v1(func, iterable):
         iter_length = len(iterable)
         processors = cpu_count() - 1
         if iter_length < 100:
@@ -85,37 +87,53 @@ class ThreadExecutor(object):
             ThreadExecutor.print_out(f'cf_ThreadPoolExecutor error: {err.__class__.__name__} {err}', mode='error')
 
     @staticmethod
-    def cf_ThreadPoolExecutor_submit(func, iterable):  # submit method is better but unordered results
-        # iter_length = len(iterable)
-        processors = cpu_count() - 1
-        task_chunk = 5
-        date = datetime.now()
+    def cf_ThreadPoolExecutor_map(func, iterable):
+        t1 = perf_counter()
         output = pd.DataFrame()
-        ThreadExecutor.print_out(f'INFO: Processors: {processors}/{cpu_count()} | Chunks: {task_chunk} |'
-                                 f'Start: {date.strftime("%H:%M:%S.%f")}')
+        ThreadExecutor.print_out(f'INFO: ThreadExecutor | cf_ThreadPoolExecutor_map start: {t1:.2f}')
         try:
-            t1 = time()
-            with ThreadPoolExecutor(max_workers=processors) as executor:
+            with ThreadPoolExecutor() as executor:
+                futures = [executor.map(func, [i for i in iterable])]
+                for results in futures:
+                    for result in results:
+                        print(result)
+                        df = pd.DataFrame([result])
+                        output = pd.concat([output, df], ignore_index=True)
+            ThreadExecutor.print_out(f'INFO: ThreadExecutor | cf_ThreadPoolExecutor_map completed in: '
+                                     f'{perf_counter() - t1:.2f}')
+            return output
+        except Exception as err:
+            ThreadExecutor.print_out(f'ERROR: ThreadExecutor | cf_ThreadPoolExecutor_map: '
+                                     f'{err.__class__.__name__} {err}', mode='error')
+
+    @staticmethod
+    def cf_ThreadPoolExecutor_submit(func, iterable):  # submit method is better but unordered results
+        t1 = perf_counter()
+        output = pd.DataFrame()
+        ThreadExecutor.print_out(f'INFO: {t1:.2f} | ThreadExecutor | cf_ThreadPoolExecutor_submit is starting')
+        try:
+            with ThreadPoolExecutor() as executor:
                 futures = [executor.submit(func, i) for i in iterable]
                 for f in as_completed(futures):
+                    # print(f.result())
                     # for f in futures:  # unordered results
                     # if f.result():
                     # df = pd.DataFrame(f.result(), columns=f.result().keys())
                     df = pd.DataFrame([f.result()])
-                    # print(f.result())
                     output = pd.concat([output, df], ignore_index=True)
-                # output.to_excel('test_output.xlsx', index=False)
-                ThreadExecutor.print_out(f'Process finished in: {time() - t1}')
+                ThreadExecutor.print_out(f'INFO: {perf_counter() - t1:.2f} | ThreadExecutor | '
+                                         f'cf_ThreadPoolExecutor_submit was completed')
                 return output
         except Exception as err:
-            ThreadExecutor.print_out(f'cf_ThreadPoolExecutor error: {err.__class__.__name__} {err}', mode='error')
+            ThreadExecutor.print_out(f'cf_ThreadPoolExecutor error: '
+                                     f'{err.__class__.__name__} {err}', mode='error')
 
     @staticmethod
     def cf_ThreadPoolExecutor_submit_no_result(func, iterable):  # submit method is better but unordered results
         processors = cpu_count() - 1
         task_chunk = 5
         date = datetime.now()
-        ThreadExecutor.print_out(f'INFO: Processors: {processors} | Chunks: {task_chunk} |'
+        ThreadExecutor.print_out(f'INFO: ThreadExecutor | Processors: {processors} | Chunks: {task_chunk} |'
                                  f'Start: {date.strftime("%H:%M:%S.%f")}')
         try:
             t1 = time()
@@ -135,7 +153,7 @@ class ThreadExecutor(object):
         task_chunk = 5
         date = datetime.now()
         output = pd.DataFrame()
-        ThreadExecutor.print_out(f'INFO: Processors: {processors} | Chunks: {task_chunk} | '
+        ThreadExecutor.print_out(f'INFO: ThreadExecutor | Processors: {processors} | Chunks: {task_chunk} | '
                                  f'Start: {date.strftime("%H:%M:%S.%f")}')
         try:
             t1 = time()
@@ -155,7 +173,8 @@ class ThreadExecutor(object):
         task_chunk = 3
         date = datetime.now()
         # output = pd.DataFrame()
-        ThreadExecutor.print_out(f'INFO: Processors: {processors} | Chunks: {task_chunk} | Start: {date.strftime("%H:%M:%S.%f")}')
+        ThreadExecutor.print_out(
+            f'INFO: ThreadExecutor | Processors: {processors} | Chunks: {task_chunk} | Start: {date.strftime("%H:%M:%S.%f")}')
         try:
             t1 = time()
             with ThreadPoolExecutor(max_workers=processors) as executor:

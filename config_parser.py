@@ -1,14 +1,14 @@
 import configparser
 import zipfile
 from pathlib import Path, PurePath
-from logger import get_logger
+from logger_class import Logger
 
 root_dir = Path().resolve()
 config_file = PurePath(root_dir, 'app_sys/', 'config.ini')
 version_file = PurePath(root_dir, 'app_sys/', 'version_.ini')
 
-logger = get_logger('config_parser')
-
+logger = Logger().get_logger('config_parser')
+logger.info('Logger from config_parser.py')
 
 # detection_all_image, image_process, download_id, version
 
