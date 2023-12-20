@@ -1,4 +1,3 @@
-from logger import get_logger
 from logger_class import Logger
 
 import pandas as pd
