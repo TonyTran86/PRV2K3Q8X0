@@ -1,5 +1,4 @@
 from logger_class import Logger
-
 import pandas as pd
 from warnings import simplefilter
 from pathlib import Path

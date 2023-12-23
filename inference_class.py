@@ -1,14 +1,17 @@
 from logger_class import Logger
 import cv2
+import pandas as pd
 import numpy as np
 import torch
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 from time import perf_counter
 from os import path
 from warnings import simplefilter
 from pathlib import Path
 from urllib.request import urlopen, Request
-from thread_executor_class import ThreadExecutor
+# from thread_executor_class import ThreadExecutor
 
 
 # Set source path --------------------------------
@@ -40,6 +43,12 @@ class InferenceModel:
         self.model_a_pretrained = Path(root_dir, 'repo_master/custom_models/model_a.pt')
         self.model_b_pretrained = Path(root_dir, 'repo_master/custom_models/model_b.pt')
         self.device = 'cpu'
+        self.thread_output = None
+        self.lock_thread = None
+        self.futures = None
+        self.future_mapping = None
+        self.img_name = None
+        self.img_RGB = None
         self.main_container = None
         self.main_container_a = None
         self.main_container_b = None
@@ -98,6 +107,19 @@ class InferenceModel:
                                  f'Pretrained model B was loaded, classes: {self.model_b_classes}')
 
     @staticmethod
+    def arg_parser(arg, file_type=None):
+        try:
+            if Path(arg).is_dir():
+                files = [x for x in Path.iterdir(Path(arg)) if x.name.endswith('.' + file_type)]
+                return files
+            else:
+                return arg
+
+        except Exception as err:
+            InferenceModel.print_out(f'ERROR: InferenceModel | arg_parser: {err.__class__.__name__} {err}', mode='error')
+            return arg
+
+    @staticmethod
     def url_parse(arg):
         filename, img_RGB = arg, None
         try:
@@ -120,19 +142,6 @@ class InferenceModel:
                 mode='error')
         finally:
             return filename, img_RGB
-
-    @staticmethod
-    def arg_parser(arg, file_type=None):
-        try:
-            if Path(arg).is_dir():
-                files = [x for x in Path.iterdir(Path(arg)) if x.name.endswith('.' + file_type)]
-                return files
-            else:
-                return arg
-
-        except Exception as err:
-            InferenceModel.print_out(f'ERROR: InferenceModel | arg_parser: {err.__class__.__name__} {err}', mode='error')
-            return arg
 
     def model_a_inference(self, f_name, img):
         self.model_a_data = {'filename': f_name, 'a_status': 'error', 'poca': 0, 'lays': 0, 'laysmax': 0,
@@ -204,36 +213,37 @@ class InferenceModel:
             else:
                 return input_string[int(pattern_index) + len(self.pattern):]
 
-    def inference_image(self, arg):
-        # Build first main data
-        self.main_container = {'filename': None, 'url_status': None, 'a_status': None, 'b_status': None,
-                               'poca': 0, 'lays': 0, 'laysmax': 0, 'doritos': 0, 'lays10': 0, 'nutz': 0}
+    def inference_image(self, arg, lock):
+        with lock:
+            # Build first main data
+            self.main_container = {'filename': None, 'url_status': None, 'a_status': None, 'b_status': None,
+                                   'poca': 0, 'lays': 0, 'laysmax': 0, 'doritos': 0, 'lays10': 0, 'nutz': 0}
 
-        # Read image from URL: return filename, img_RGB
-        filename, img_RGB = self.url_parse(arg)
+            # Read image from URL: return filename, img_RGB
+            filename, img_RGB = self.url_parse(arg)
 
-        if img_RGB is not None:
-            # Update url_status to main_container
-            self.main_container['filename'] = filename
-            self.main_container['url_status'] = 'success'
+            if img_RGB is not None:
+                # Update url_status to main_container
+                self.main_container['filename'] = filename
+                self.main_container['url_status'] = 'success'
 
-            # Process Model A Inference
-            self.model_a_inference(filename, img_RGB)
+                # Process Model A Inference
+                self.model_a_inference(filename, img_RGB)
 
-            # Update model A data to main_container
-            self.main_container = {**self.main_container, **self.model_a_data}
+                # Update model A data to main_container
+                self.main_container = {**self.main_container, **self.model_a_data}
 
-            # Process Model B Inference
-            self.model_b_inference(filename, img_RGB)
+                # Process Model B Inference
+                self.model_b_inference(filename, img_RGB)
 
-            # Update model B data to main_container
-            self.main_container = {**self.main_container, **self.model_b_data}
+                # Update model B data to main_container
+                self.main_container = {**self.main_container, **self.model_b_data}
 
-        else:
-            self.main_container['filename'] = filename
-            self.main_container['url_status'] = 'error'
+            else:
+                self.main_container['filename'] = filename
+                self.main_container['url_status'] = 'error'
 
-        return self.main_container
+            return self.main_container
 
     def inference_model_a(self, arg):
         # Re-construct file name
@@ -318,6 +328,26 @@ class InferenceModel:
 
         return self.detection_data
 
+    def ThreadPoolExecutor_submit(self, func, iterable):  # submit method is better but unordered results
+        t1 = perf_counter()
+        InferenceModel.print_out(f'INFO: {t1:.2f} | InferenceModel | Thread is starting')
+        self.lock_thread = Lock()
+        self.thread_output = pd.DataFrame()
+        self.futures = []
+        self.future_mapping = {}
+        try:
+            with ThreadPoolExecutor() as executor:
+                futures = [executor.submit(func, i, self.lock_thread) for i in iterable]
+                for f in as_completed(futures):
+                    df = pd.DataFrame([f.result()])
+                    self.thread_output = pd.concat([self.thread_output, df], ignore_index=True)
+                InferenceModel.print_out(f'INFO: {perf_counter() - t1:.2f} | InferenceModel | '
+                                         f'Thread was completed')
+                return self.thread_output
+        except Exception as err:
+            InferenceModel.print_out(f'InferenceModel | ThreadPoolExecutor_submit error: '
+                                     f'{err.__class__.__name__} {err}', mode='error')
+
     def inference_process(self, photo_url_list, debug=False):
         try:
             model_a_classes = [0, 1, 3, 4, 5]
@@ -326,7 +356,7 @@ class InferenceModel:
             model_b_classes = [0, 1]
             self.load_model_b_pretrained(model_b_classes, confidence=0.819, iou=0.5)
 
-            self.detection_data = ThreadExecutor().cf_ThreadPoolExecutor_submit(self.inference_image, photo_url_list)
+            self.detection_data = self.ThreadPoolExecutor_submit(self.inference_image, photo_url_list)
 
             if debug:
                 self.detection_data.to_excel('detection_data.xlsx', index=False)

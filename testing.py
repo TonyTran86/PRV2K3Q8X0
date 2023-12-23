@@ -30,7 +30,7 @@ class MainProcess:
         if self.num_of_report > 0:
             # user_input = int(input(f'Please select the report to process: '))
             # self.select_report = Path(self.report_path, str(report_list[user_input]))
-            self.select_report = Path(self.report_path, str(report_list[0]))
+            self.select_report = Path(self.report_path, str(report_list[2]))
             report_process = ProcessReport(self.select_report)
             report_process.get_result_template()
             url_list = report_process.get_url_listing()

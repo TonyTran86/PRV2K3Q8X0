@@ -7,14 +7,17 @@ root_dir = Path().resolve()
 
 
 class Logger:
-    def __init__(self):
-        self.LOGGER_FOLDER = self.get_log_folder_path()
+    def __init__(self, log_folder):
+        self.LOGGER_FOLDER = self.get_log_folder_path(log_folder)
         self.LOG_FILE_NAME = self.get_log_file()
         self.LOGGERS = {}
 
     @staticmethod
-    def get_log_folder_path():
-        log_folder = Path(root_dir, 'Logs/')
+    def get_log_folder_path(log_folder):
+        if log_folder is None:
+            log_folder = Path(root_dir, 'Logs/')
+        else:
+            log_folder = Path(log_folder)
 
         if not Path(log_folder).exists():
             log_folder = Path(root_dir, 'Logs/')

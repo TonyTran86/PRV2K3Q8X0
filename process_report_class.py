@@ -213,15 +213,20 @@ class ProcessReport:
         ProcessReport.print_out(f'INFO: {perf_counter()-self.start:.2f} | '
                                 f'ProcessReport | save_split_row_files: split files were saved')
 
-    def save_result_file(self, file_name_suffix='_result.xlsx', save=True):  # Save result by route
+    def save_result_file(self, file_name_suffix='_result.xlsx', save=True, save_folder=None):  # Save result by route
         # save_file_name = Path(self.temp_path, str(arg) + '_duplicate_result.xlsx')
         # df = self.df_default[self.df_default['Route_Code'] == arg]
         # df.to_excel(save_file_name, index=False)
 
-        self.result_file_path = Path(self.result_path, Path(self.f_path).stem + file_name_suffix)
         if save:
+            if save_folder is not None:
+                self.result_path = Path(save_folder)
+
             if not self.result_path.exists():
                 Path.mkdir(self.result_path, exist_ok=True)
+
+            self.result_file_path = Path(self.result_path, Path(self.f_path).stem + file_name_suffix)
+
             self.df_default.to_excel(self.result_file_path, index=False, sheet_name='Export')
             ProcessReport.print_out(f'INFO: {perf_counter()-self.start:.2f} | '
                                     f'ProcessReport | save_result_file: Result file was exported')
